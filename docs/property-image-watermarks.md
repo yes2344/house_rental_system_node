@@ -1,11 +1,11 @@
 # Property image watermarks
 
-Uploaded property photos are stored twice: the public image includes a low-opacity, millennial-pink centered `Infinity House` watermark, plus the current site name, logo, and configured contact phone in the lower-right corner. The unmodified original is kept in private storage for authorized access. The public corner watermark uses the phone configured under the administrator's brokerage contact settings. If no phone is configured, it displays the site name and logo only.
+The Node API adds a translucent `@Infinity House` watermark to newly uploaded
+property images. It stores an unmodified original separately in private
+storage and serves that original only through the authorized image endpoint.
 
-New uploads are watermarked automatically. After changing the site name, logo, or contact phone, regenerate public versions from the preserved private originals:
-
-```powershell
-python manage.py watermark_property_images --refresh
-```
-
-The refresh replaces only each public image. It preserves the private original and its metadata. Running the command without `--refresh` processes legacy images that do not yet have a stored original and skips images already migrated.
+Existing images are not automatically regenerated when the watermark changes.
+The Node backend does not include a bulk re-watermark command. Back up the
+public and private media directories before any separately developed
+maintenance operation; never overwrite private originals with watermarked
+files.

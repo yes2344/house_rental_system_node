@@ -2,32 +2,25 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Start Django API (local development)",
+      "label": "Start Node API (local development)",
       "type": "process",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "command": "npm",
       "args": [
-        "manage.py",
-        "runserver",
-        "127.0.0.1:8000",
-        "--noreload"
+        "start"
       ],
       "options": {
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "DJANGO_DEBUG": "True",
-          "DJANGO_SECURE_SSL_REDIRECT": "False"
-        }
+        "cwd": "${workspaceFolder}\\backend"
       },
       "isBackground": true,
       "problemMatcher": {
-        "owner": "django-runserver",
+        "owner": "node-api",
         "pattern": {
           "regexp": "^(?!)$"
         },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "^Performing system checks\\.\\.\\.$",
-          "endsPattern": "^Starting (?:WSGI )?development server at http://127\\.0\\.0\\.1:8000/"
+          "beginsPattern": "^> house-sales-rental-api@",
+          "endsPattern": "^Node API listening on port "
         }
       },
       "runOptions": {

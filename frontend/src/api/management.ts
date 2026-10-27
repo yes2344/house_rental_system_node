@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { LocationType, MarketplaceLocation, PaginatedResponse, PropertyLocationPathItem } from './properties';
+import type { Currency, LocationType, MarketplaceLocation, PaginatedResponse, PropertyLocationPathItem } from './properties';
 
 export type ManagedListingType = 'sale' | 'rent';
 export type ManagedPropertyType =
@@ -181,7 +181,7 @@ export interface ManagedProperty {
   category: ManagedPropertyType;
   listing_type: ManagedListingType;
   price: string;
-  currency: 'ETB';
+  currency: Currency;
   bedrooms: number;
   bathrooms: number;
   area_sqft: number;
@@ -211,6 +211,7 @@ export interface ManagedPropertyPayload {
   category: ManagedPropertyType;
   listing_type: ManagedListingType;
   price: string;
+  currency: Currency;
   bedrooms: number;
   bathrooms: number;
   area_sqft: number;
@@ -288,8 +289,10 @@ export interface ManagedPropertyFilters {
 }
 
 export async function getAmenities(signal?: AbortSignal): Promise<AmenityOption[]> {
-  const response = await apiClient.get<PaginatedResponse<AmenityOption>>('/amenities/', { signal });
-  return response.data.results;
+  const response = await apiClient.get<PaginatedResponse<AmenityOption> | AmenityOption[]>('/amenities/', { signal });
+  if (Array.isArray(response.data)) return response.data;
+  if (Array.isArray(response.data.results)) return response.data.results;
+  throw new Error('The server returned an invalid amenities list.');
 }
 
 export async function getManagedProperties(
@@ -345,11 +348,13 @@ export async function deleteManagedProperties(ids: number[]): Promise<number> {
 }
 
 export async function getManagedImages(propertyId: number, signal?: AbortSignal): Promise<ManagedImage[]> {
-  const response = await apiClient.get<PaginatedResponse<ManagedImage>>(
+  const response = await apiClient.get<PaginatedResponse<ManagedImage> | ManagedImage[]>(
     `/management/properties/${propertyId}/images/`,
     { signal },
   );
-  return response.data.results;
+  if (Array.isArray(response.data)) return response.data;
+  if (Array.isArray(response.data.results)) return response.data.results;
+  throw new Error('The server returned an invalid property image list.');
 }
 
 export async function uploadManagedImage(

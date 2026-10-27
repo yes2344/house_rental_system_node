@@ -1,4 +1,4 @@
-import type { ListingType } from '../api/properties';
+import type { Currency, ListingType } from '../api/properties';
 import type { ManagedRentalFrequency } from '../api/management';
 import type { Locale, MessageKey } from '../i18n';
 
@@ -10,6 +10,7 @@ export function formatPropertyPrice(
   rentalFrequency: RentalPeriod,
   locale: Locale,
   text: (key: MessageKey) => string,
+  currency: Currency = 'ETB',
 ): string {
   const numericPrice = Number(price);
   if (!Number.isFinite(numericPrice) || numericPrice <= 0) return text('priceOnRequest');
@@ -25,7 +26,8 @@ export function formatPropertyPrice(
   const period = listingType === 'rent' && rentalFrequency
     ? ` ${text(periodKey[rentalFrequency])}`
     : '';
-  return `${text('ethiopianBirr')} ${formattedPrice}${period}`;
+  const currencyLabel = currency === 'USD' ? 'USD' : text('ethiopianBirr');
+  return `${currencyLabel} ${formattedPrice}${period}`;
 }
 
 export function formatRegistrationDate(createdAt: string | null | undefined, locale: Locale): string | null {

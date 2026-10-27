@@ -30,6 +30,7 @@ export type LocationType =
   | 'neighborhood';
 
 export type ListingType = 'sale' | 'rent';
+export type Currency = 'ETB' | 'USD';
 export type PropertyType =
   | 'house' | 'villa' | 'apartment' | 'condominium' | 'land'
   | 'office' | 'shop' | 'warehouse' | 'commercial' | 'other';
@@ -63,7 +64,7 @@ export interface PropertySummary {
   listing_type: ListingType;
   rental_frequency: 'daily' | 'weekly' | 'monthly' | 'yearly' | '';
   price: string;
-  currency: 'ETB';
+  currency: Currency;
   area_value: string | null;
   area_unit: 'sqm' | 'sqft' | '';
   bedrooms: number;

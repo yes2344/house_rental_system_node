@@ -1,44 +1,58 @@
 # Owner and delegated account management
 
-## Django administrator
+## Administrator access
 
-Customers, agents, delegated administrators, and Django superusers use the same React sign-in page. After sign-in, `/dashboard` shows actions permitted for that account. Protected React pages and API operations enforce their permissions on the server; hiding a dashboard link is not an authorization control. Django Admin at `/admin/` remains available as an optional interface and uses Django's own session sign-in.
+Customers, owners, agents, and administrators use the React sign-in page.
+After sign-in, `/dashboard` shows actions allowed for the account. Protected
+pages and API operations enforce permissions in the Node backend; hiding a
+dashboard link is not an authorization control.
 
-Create or recover the Django superuser locally with Django's built-in commands:
+The backend uses the existing PostgreSQL account records. If the database has
+no active administrator, the Platform Owner can be bootstrapped with the
+backend's guarded CLI. First configure `PLATFORM_OWNER_USERNAME`,
+`PLATFORM_OWNER_EMAIL`, and a strong `PLATFORM_OWNER_PASSWORD` (at least 16
+characters) in the private backend environment. Run a dry run first:
 
 ```powershell
-.\.venv\Scripts\python.exe manage.py createsuperuser
-.\.venv\Scripts\python.exe manage.py changepassword YOUR_OWNER_USERNAME
+Set-Location backend
+npm run bootstrap:platform-owner
 ```
 
-Enter credentials only into the interactive terminal prompts. Do not put passwords in source files, environment templates, shell command arguments, or chat. Django Admin is restricted to active superusers. The React dashboard and API also verify superuser privileges on every protected operation; hiding a dashboard link is not an authorization control.
+Only after reviewing the dry-run result, explicitly confirm account creation:
+
+```powershell
+$env:PLATFORM_OWNER_BOOTSTRAP_CONFIRM = "create-platform-owner"
+npm run bootstrap:platform-owner -- --apply
+```
+
+Do not run the creation mode if an active administrator already exists. The
+bootstrap command does not reset or replace an existing account.
 
 ## Manage agents
 
-1. Sign in with an active Django superuser or an active delegated administrator and open **Manage agents** from `/dashboard`.
-2. The page and `/api/v1/admin/delegated-accounts/` can invite, inspect, update, or deactivate agent accounts only. Administrators cannot manage customers or other administrators through the application.
-3. New agents receive the existing marketplace-operational permissions by default. The platform owner may separately grant an agent permission to manage public contact/social settings. Agent accounts cannot manage users.
-4. Share the one-time invitation token privately. The token is displayed only once and is never written to audit records. The invitee opens `/accept-invitation`, pastes the token, and chooses a password. The invitation expires after 48 hours and can only be used once.
-5. Agent assignments remain useful for attribution and workflows, but they do not restrict an approved agent's operational visibility or management scope. An agent who creates a listing is automatically assigned to it.
+Administrators can use **Manage agents** from `/dashboard` to create, inspect,
+update, or deactivate agent accounts. Agent management is not a way to manage
+customers or other administrators. New agent accounts follow the onboarding
+workflow and are subject to approval before receiving management access.
 
-The project does not currently send invitation emails. Until an email provider is configured, the owner must securely relay the one-time token to the intended invitee.
+Approved agents receive operational permissions for assigned properties,
+viewings, and sub-city locations. The Platform Owner may separately grant an
+approved agent `settings.manage` or `announcements.review_assigned` where
+appropriate. Other administrators and agents cannot grant those permissions.
 
-## Permission behavior
+## Permission and account behavior
 
-Permissions are defined in `accounts.models.Profile.Permission`; the internal `AGENT` role name remains for compatibility. Delegated administrators can manage agent accounts but cannot grant owner-only permissions. Approved agents receive marketplace-operational permissions by role, including for older accounts whose saved permission list is incomplete. Agent management of listings and owner submissions is scoped to the assigned city. Property ownership or a prior listing submission alone does not grant management access. Public owner-announced listings require an approved submission and active agreement; agent-managed listings must be published and available.
+The Node API checks the active account and its role/permissions on each
+protected operation. Property ownership or a prior listing submission alone
+does not grant management access. Owner-announced listings require an
+approved submission and active agreement; agent-managed listings must meet
+their publication and availability requirements.
 
-Only the designated active Django superuser (the platform owner) can grant or revoke `settings.manage` on an agent account. Approved agents with that explicit permission, and the platform owner, can use `/management/brokerage` to update public business contact/social links and homepage announcements. Other superusers, delegated administrators, and other agents are denied by the settings API. Social links are stored per platform, require HTTPS, and can be disabled without deleting the saved URL. Public contact channels are displayed only when configured and enabled; no fallback phone number, messaging account, or social handle is shown. Homepage announcements remain unpublished until explicitly published.
-
-Deactivating an account takes effect on subsequent authenticated requests. Role and account changes, including permission changes, and invitations are written to the audit log without recording passwords or invitation tokens.
+Deactivating an account revokes its active tab sessions. Account and
+permission changes are written to the audit log without recording passwords.
 
 ## Verification
 
-After pulling code or changing dependencies:
-
-```powershell
-.\.venv\Scripts\python.exe manage.py migrate
-.\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe manage.py test
-```
-
-Do not run migrations against production until a database backup and deployment window are arranged.
+From `backend/`, run the configured test suite with `npm test`. Do not run
+database migrations against production without a verified backup and an
+approved deployment plan.

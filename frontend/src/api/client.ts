@@ -104,7 +104,7 @@ export function getErrorMessage(error: unknown): string {
     const detail = error.response?.data?.detail;
     if (typeof detail === 'string') return detail;
     if (error.response) return `The server returned an error (${error.response.status}).`;
-    return 'The server could not be reached. Check that the Django API is running.';
+    return 'The server could not be reached. Check that the Node API is running.';
   }
   return 'Something went wrong. Please try again.';
 }

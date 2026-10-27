@@ -308,7 +308,7 @@ export function OwnerListingsPage({ locale, text }: OwnerListingsPageProps) {
                     <h2>{property.title}</h2>
                     <p className="manager-listing-location">{formatPropertyLocation(property, locale)}</p>
                     <strong className="manager-listing-price">
-                      {formatPropertyPrice(property.price, property.listing_type, property.rental_frequency, locale, text)}
+                      {formatPropertyPrice(property.price, property.listing_type, property.rental_frequency, locale, text, property.currency)}
                     </strong>
                     <p className="manager-listing-date">
                       {text('registeredDate')} {formatRegistrationDate(property.created_at, locale)}
@@ -380,7 +380,7 @@ export function OwnerListingsPage({ locale, text }: OwnerListingsPageProps) {
                       )}
                     </td>
                     <td>{text(property.listing_type === 'rent' ? 'forRent' : 'forSale')}</td>
-                    <td>{formatPropertyPrice(property.price, property.listing_type, property.rental_frequency, locale, text)}</td>
+                    <td>{formatPropertyPrice(property.price, property.listing_type, property.rental_frequency, locale, text, property.currency)}</td>
                     <td><span className={`manager-badge status-${property.status}`}>{text(propertyStatusMessage(property.status))}</span></td>
                     <td><span className={`manager-badge publication-${property.publication_status}`}>{text(publicationMessage[property.publication_status])}</span></td>
                     <td className="manager-row-actions">

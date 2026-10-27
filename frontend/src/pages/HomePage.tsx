@@ -65,7 +65,10 @@ export function HomePage({ locale, text }: HomePageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlListingType = searchParams.get('listing_type') ?? '';
   const urlPropertyType = searchParams.get('property_type') ?? '';
-  const urlOrdering = searchParams.get('ordering') ?? '-created_at';
+  const requestedOrdering = searchParams.get('ordering');
+  const urlOrdering = requestedOrdering === 'created_at'
+    ? 'created_at'
+    : '-created_at';
   const urlLocationId = searchParams.get('location_id') ?? '';
   const urlCityId = searchParams.get('city_id') ?? '';
   const urlKeyword = searchParams.get('search') ?? '';
@@ -460,8 +463,6 @@ export function HomePage({ locale, text }: HomePageProps) {
                 >
                   <option value="-created_at">{text('sortNewest')}</option>
                   <option value="created_at">{text('sortOldest')}</option>
-                  <option value="price">{text('sortPriceLow')}</option>
-                  <option value="-price">{text('sortPriceHigh')}</option>
                 </select>
               </label>
               <button className="button button-primary search-submit" type="submit">

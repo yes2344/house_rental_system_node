@@ -300,7 +300,7 @@ export function SubmissionReviewPage({ locale, text }: SubmissionReviewPageProps
                       <h2>{property.title}</h2>
                       <p><MapPin size={14} aria-hidden="true" />{property.location}</p>
                     </div>
-                    <strong>{formatPropertyPrice(property.price, property.listing_type, property.rental_frequency, locale, text)}</strong>
+                    <strong>{formatPropertyPrice(property.price, property.listing_type, property.rental_frequency, locale, text, property.currency)}</strong>
                   </header>
                   {review.assigned_reviewer_name && (
                     <p className="submission-review-assignee">

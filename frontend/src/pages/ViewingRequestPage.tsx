@@ -200,7 +200,7 @@ export function ViewingRequestPage({ locale, text }: ViewingRequestPageProps) {
               <h2>{property.title}</h2>
               <p><MapPin size={15} aria-hidden="true" />{property.location}</p>
             </div>
-            <strong>{text('ethiopianBirr')} {formatPrice(property.price)}</strong>
+            <strong>{property.currency ?? 'ETB'} {formatPrice(property.price)}</strong>
           </div>
 
           {receipt ? (

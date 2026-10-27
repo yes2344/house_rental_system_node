@@ -1,22 +1,22 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from "react";
 
 import {
   getManagedPublicInformationPages,
   updateManagedPublicInformationPage,
   type PublicInformationPage,
   type PublicInformationPageContent,
-} from '../api/publicInformation';
-import { getErrorMessage } from '../api/client';
-import type { MessageKey } from '../i18n';
+} from "../api/publicInformation";
+import { getErrorMessage } from "../api/client";
+import type { MessageKey } from "../i18n";
 
 interface PublicInformationPagesEditorProps {
   text: (key: MessageKey) => string;
 }
 
-const pageTitleKeys: Record<PublicInformationPage['page'], MessageKey> = {
-  about: 'about',
-  contact: 'contact',
-  'property-management': 'propertyManagement',
+const pageTitleKeys: Record<PublicInformationPage["page"], MessageKey> = {
+  about: "about",
+  contact: "contact",
+  "property-management": "propertyManagement",
 };
 
 const fields: {
@@ -26,21 +26,51 @@ const fields: {
   rows?: number;
   maxLength: number;
 }[] = [
-  { key: 'title_en', label: 'publicPageTitleEnglish', maxLength: 160 },
-  { key: 'title_am', label: 'publicPageTitleAmharic', maxLength: 160 },
-  { key: 'introduction_en', label: 'publicPageIntroEnglish', multiline: true, rows: 2, maxLength: 500 },
-  { key: 'introduction_am', label: 'publicPageIntroAmharic', multiline: true, rows: 2, maxLength: 500 },
-  { key: 'body_en', label: 'publicPageBodyEnglish', multiline: true, rows: 5, maxLength: 5000 },
-  { key: 'body_am', label: 'publicPageBodyAmharic', multiline: true, rows: 5, maxLength: 5000 },
+  { key: "title_en", label: "publicPageTitleEnglish", maxLength: 160 },
+  { key: "title_am", label: "publicPageTitleAmharic", maxLength: 160 },
+  {
+    key: "introduction_en",
+    label: "publicPageIntroEnglish",
+    multiline: true,
+    rows: 2,
+    maxLength: 500,
+  },
+  {
+    key: "introduction_am",
+    label: "publicPageIntroAmharic",
+    multiline: true,
+    rows: 2,
+    maxLength: 500,
+  },
+  {
+    key: "body_en",
+    label: "publicPageBodyEnglish",
+    multiline: true,
+    rows: 5,
+    maxLength: 5000,
+  },
+  {
+    key: "body_am",
+    label: "publicPageBodyAmharic",
+    multiline: true,
+    rows: 5,
+    maxLength: 5000,
+  },
 ];
 
-export function PublicInformationPagesEditor({ text }: PublicInformationPagesEditorProps) {
+export function PublicInformationPagesEditor({
+  text,
+}: PublicInformationPagesEditorProps) {
   const [pages, setPages] = useState<PublicInformationPage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [savingPage, setSavingPage] = useState<PublicInformationPage['page'] | null>(null);
-  const [saveError, setSaveError] = useState('');
-  const [savedPage, setSavedPage] = useState<PublicInformationPage['page'] | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [savingPage, setSavingPage] = useState<
+    PublicInformationPage["page"] | null
+  >(null);
+  const [saveError, setSaveError] = useState("");
+  const [savedPage, setSavedPage] = useState<
+    PublicInformationPage["page"] | null
+  >(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -58,14 +88,16 @@ export function PublicInformationPagesEditor({ text }: PublicInformationPagesEdi
   }, []);
 
   const updateField = (
-    pageSlug: PublicInformationPage['page'],
+    pageSlug: PublicInformationPage["page"],
     field: keyof PublicInformationPageContent,
     value: string,
   ) => {
-    setPages((current) => current.map((page) => (
-      page.page === pageSlug ? { ...page, [field]: value } : page
-    )));
-    setSaveError('');
+    setPages((current) =>
+      current.map((page) =>
+        page.page === pageSlug ? { ...page, [field]: value } : page,
+      ),
+    );
+    setSaveError("");
     setSavedPage(null);
   };
 
@@ -75,7 +107,7 @@ export function PublicInformationPagesEditor({ text }: PublicInformationPagesEdi
   ) => {
     event.preventDefault();
     setSavingPage(page.page);
-    setSaveError('');
+    setSaveError("");
     setSavedPage(null);
     try {
       const updated = await updateManagedPublicInformationPage(page.page, {
@@ -86,7 +118,9 @@ export function PublicInformationPagesEditor({ text }: PublicInformationPagesEdi
         body_en: page.body_en,
         body_am: page.body_am,
       });
-      setPages((current) => current.map((item) => item.page === updated.page ? updated : item));
+      setPages((current) =>
+        current.map((item) => (item.page === updated.page ? updated : item)),
+      );
       setSavedPage(page.page);
     } catch (error: unknown) {
       setSaveError(getErrorMessage(error));
@@ -96,15 +130,25 @@ export function PublicInformationPagesEditor({ text }: PublicInformationPagesEdi
   };
 
   return (
-    <section className="manager-form manager-form-section public-page-editor" aria-labelledby="public-pages-editor-title">
+    <section
+      id="public-pages"
+      className="manager-form manager-form-section public-page-editor"
+      aria-labelledby="public-pages-editor-title"
+    >
       <div>
-        <h2 id="public-pages-editor-title">{text('publicPagesManagementTitle')}</h2>
-        <p className="manager-hint">{text('publicPagesManagementIntro')}</p>
+        <h2 id="public-pages-editor-title">
+          {text("publicPagesManagementTitle")}
+        </h2>
+        <p className="manager-hint">{text("publicPagesManagementIntro")}</p>
       </div>
       {loading ? (
-        <div className="listing-state" role="status">{text('publicPagesLoading')}</div>
+        <div className="listing-state" role="status">
+          {text("publicPagesLoading")}
+        </div>
       ) : loadError ? (
-        <p className="manager-inline-error" role="alert">{text('publicPagesLoadError')} {loadError}</p>
+        <p className="manager-inline-error" role="alert">
+          {text("publicPagesLoadError")} {loadError}
+        </p>
       ) : (
         <div className="public-page-editor-list">
           {pages.map((page) => (
@@ -120,32 +164,46 @@ export function PublicInformationPagesEditor({ text }: PublicInformationPagesEdi
                     <span>{text(label)}</span>
                     {multiline ? (
                       <textarea
-                        required={key.startsWith('introduction_')}
+                        required={key.startsWith("introduction_")}
                         maxLength={maxLength}
                         rows={rows}
                         value={page[key]}
-                        onChange={(event) => updateField(page.page, key, event.target.value)}
+                        onChange={(event) =>
+                          updateField(page.page, key, event.target.value)
+                        }
                       />
                     ) : (
                       <input
                         required
                         maxLength={maxLength}
                         value={page[key]}
-                        onChange={(event) => updateField(page.page, key, event.target.value)}
+                        onChange={(event) =>
+                          updateField(page.page, key, event.target.value)
+                        }
                       />
                     )}
                   </label>
                 ))}
               </div>
               {savedPage === page.page && (
-                <p className="manager-inline-success" role="status">{text('publicPageSaved')}</p>
+                <p className="manager-inline-success" role="status">
+                  {text("publicPageSaved")}
+                </p>
               )}
               {saveError && savingPage === null && savedPage === null && (
-                <p className="manager-inline-error" role="alert">{text('publicPageSaveError')} {saveError}</p>
+                <p className="manager-inline-error" role="alert">
+                  {text("publicPageSaveError")} {saveError}
+                </p>
               )}
               <div className="manager-form-actions">
-                <button className="button button-primary" type="submit" disabled={savingPage !== null}>
-                  {savingPage === page.page ? text('publicPageSaving') : text('publicPageSave')}
+                <button
+                  className="button button-primary"
+                  type="submit"
+                  disabled={savingPage !== null}
+                >
+                  {savingPage === page.page
+                    ? text("publicPageSaving")
+                    : text("publicPageSave")}
                 </button>
               </div>
             </form>

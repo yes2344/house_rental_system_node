@@ -231,6 +231,7 @@ export function MyPropertySubmissionsPage({ locale, text }: MyPropertySubmission
                         submission.rental_frequency,
                         locale,
                         text,
+                        submission.currency,
                       )}</p>
                       {submission.review_feedback && (
                         <p className="submission-feedback"><strong>{text('submissionReviewFeedback')}:</strong> {submission.review_feedback}</p>

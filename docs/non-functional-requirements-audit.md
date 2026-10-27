@@ -7,6 +7,9 @@ the NFR improvement in this audit. It is a source-and-local-check assessment,
 not a production certification. The attached audit prompt is read-only and was
 not modified.
 
+This is a historical assessment of the former Django implementation. It does
+not assess or certify the current Node.js backend.
+
 Each category is rated from 0 to 5:
 
 - **0**: absent or demonstrably unsafe.

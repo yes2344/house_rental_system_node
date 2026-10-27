@@ -236,6 +236,15 @@ export function Header({ locale, onLocaleChange, preferenceError, text }: Header
             <NavLink to="/about" onClick={closeNavigation}>{text('aboutUs')}</NavLink>
             <NavLink to="/contact" onClick={closeNavigation}>{text('contactUs')}</NavLink>
             <NavLink to="/property-management" onClick={closeNavigation}>{text('propertyManagement')}</NavLink>
+            {canAccessDashboard && (
+              <NavLink
+                className="mobile-dashboard-nav-link"
+                to="/dashboard"
+                onClick={closeNavigation}
+              >
+                {text('dashboardTitle')}
+              </NavLink>
+            )}
             {account?.role !== 'administrator' && (
               <Link
                 className="button button-small button-primary header-cta"
@@ -280,7 +289,7 @@ export function Header({ locale, onLocaleChange, preferenceError, text }: Header
             ) : account ? (
               <>
                 {canAccessDashboard && (
-                  <Link className="header-sign-in" to="/dashboard" onClick={closeNavigation}>{text('dashboardTitle')}</Link>
+                  <Link className="header-sign-in desktop-dashboard-link" to="/dashboard" onClick={closeNavigation}>{text('dashboardTitle')}</Link>
                 )}
                 {!isAdministrator && (
                   <Link className="header-sign-in" to="/account" onClick={closeNavigation}>{text('myAccount')}</Link>
