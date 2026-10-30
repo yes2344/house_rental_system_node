@@ -154,6 +154,18 @@ export async function bootstrapPlatformOwner(client, {
      WHERE is_active = TRUE AND is_superuser = TRUE
      ORDER BY id`,
   );
+  const activeAdministrators = await client.query(
+    `SELECT account.id
+     FROM public.auth_user AS account
+     LEFT JOIN public.accounts_profile AS profile ON profile.user_id = account.id
+     WHERE account.is_active = TRUE
+       AND (
+         account.is_superuser = TRUE
+         OR (account.is_staff = TRUE AND profile.role = 'administrator')
+       )
+     ORDER BY account.id
+     LIMIT 1`,
+  );
   const configuredOwnerId = settings.rows[0]?.platform_owner_id ?? null;
 
   if (matches.rowCount === 1) {
@@ -176,8 +188,12 @@ export async function bootstrapPlatformOwner(client, {
     );
   }
 
-  if (configuredOwnerId !== null || activeOwners.rowCount > 0) {
-    throw new Error('A Platform Owner or active superuser already exists; ownership was not changed.');
+  if (
+    configuredOwnerId !== null
+    || activeOwners.rowCount > 0
+    || activeAdministrators.rowCount > 0
+  ) {
+    throw new Error('A Platform Owner or active administrator already exists; ownership was not changed.');
   }
 
   if (!apply) return { status: 'ready', username: owner.username };

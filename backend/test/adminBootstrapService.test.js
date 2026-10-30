@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { verifyPassword } from '../src/services/passwordService.js';
-import { promoteExistingSiteadmin } from '../src/services/adminBootstrapService.js';
+import {
+  bootstrapPlatformOwner,
+  promoteExistingSiteadmin,
+} from '../src/services/adminBootstrapService.js';
 
 function bootstrapClient({ accounts = [{ id: 23, is_active: true }], conflictingEmail = false } = {}) {
   const calls = [];
@@ -86,4 +89,51 @@ test('siteadmin bootstrap rejects missing, duplicate, inactive, and conflicting 
     );
     assert.equal(client.calls.some(({ sql }) => sql.includes('UPDATE auth_user')), false);
   });
+});
+
+function platformOwnerClient({ activeAdministrators = [], matchingAccounts = [] } = {}) {
+  const calls = [];
+  return {
+    calls,
+    async query(sql) {
+      calls.push(sql);
+      if (sql.includes('FROM public.portal_admin_brokeragesettings')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes('lower(account.username)')) {
+        return { rows: matchingAccounts, rowCount: matchingAccounts.length };
+      }
+      if (sql.includes("profile.role = 'administrator'")) {
+        return { rows: activeAdministrators, rowCount: activeAdministrators.length };
+      }
+      if (sql.includes('is_superuser = TRUE')) {
+        return { rows: [], rowCount: 0 };
+      }
+      throw new Error(`Unexpected platform-owner bootstrap query: ${sql}`);
+    },
+  };
+}
+
+const platformOwnerConfig = {
+  username: 'platform-owner',
+  email: 'platform-owner@example.test',
+  password: 'Q4!river-Copper-81-Maple',
+};
+
+test('Platform Owner bootstrap dry run refuses to create an owner when an active administrator exists', async () => {
+  const client = platformOwnerClient({ activeAdministrators: [{ id: 8 }] });
+
+  await assert.rejects(
+    bootstrapPlatformOwner(client, platformOwnerConfig),
+    /active administrator already exists/,
+  );
+  assert.equal(client.calls.some((sql) => /^\s*INSERT/i.test(sql)), false);
+});
+
+test('Platform Owner bootstrap dry run reports readiness when no administrator exists', async () => {
+  const client = platformOwnerClient();
+
+  const result = await bootstrapPlatformOwner(client, platformOwnerConfig);
+
+  assert.deepEqual(result, { status: 'ready', username: platformOwnerConfig.username });
 });
