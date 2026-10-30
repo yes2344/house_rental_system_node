@@ -1,0 +1,16 @@
+Category fallback photography
+
+The following images were downloaded from Unsplash and are used under the
+Unsplash License (https://unsplash.com/license):
+
+- house.jpg: https://images.unsplash.com/photo-1600585154340-be6161a56a0c
+- apartment.jpg: https://images.unsplash.com/photo-1600607687939-ce8a6c25118c
+- land.jpg: https://images.unsplash.com/photo-1500382017468-9049fed747ef
+- office.jpg: https://images.unsplash.com/photo-1497366754035-f200968a6e72
+- shop.jpg: https://images.unsplash.com/photo-1441986300917-64674bd600d8
+- warehouse.jpg: https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d
+- commercial.jpg: https://images.unsplash.com/photo-1486406146926-c627a92ad1ab
+
+Where a public listing has its own image, that listing image is used instead
+of the category fallback. These fallback photos are illustrative and are not
+representations of a specific property advertised on the platform.

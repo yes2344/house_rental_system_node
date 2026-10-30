@@ -1,0 +1,14 @@
+Options -Indexes -MultiViews
+RewriteEngine On
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(?:css|js|svg|woff2?)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
+
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+RewriteRule ^ index.html [L]

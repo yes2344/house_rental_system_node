@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 720" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">Homes among the green hills</title>
+  <desc id="description">A warm illustration of a home, rolling hills, and morning light.</desc>
+  <defs>
+    <linearGradient id="sky" x1="140" y1="0" x2="690" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E9EFE3"/>
+      <stop offset="1" stop-color="#D7E1D1"/>
+    </linearGradient>
+    <linearGradient id="hill" x1="120" y1="250" x2="550" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A6B79C"/>
+      <stop offset="1" stop-color="#627B67"/>
+    </linearGradient>
+    <linearGradient id="house" x1="340" y1="190" x2="650" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF7"/>
+      <stop offset="1" stop-color="#E8E3D6"/>
+    </linearGradient>
+    <filter id="shadow" x="240" y="175" width="475" height="470" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+  <rect x="34" y="24" width="812" height="672" rx="34" fill="url(#sky)"/>
+  <circle cx="684" cy="151" r="62" fill="#E7B65E" fill-opacity=".62"/>
+  <path d="M34 405C153 319 249 327 357 383c103 53 176 64 299 9 82-37 135-44 190-21v325H34V405Z" fill="#BECAB5"/>
+  <path d="M34 493c133-94 232-99 368-33 134 65 236 58 330 19 42-17 79-26 114-21v238H34V493Z" fill="url(#hill)"/>
+  <ellipse cx="472" cy="597" rx="196" ry="28" fill="#274536" fill-opacity=".2" filter="url(#shadow)"/>
+  <path d="M266 371 462 218l205 153v197H266V371Z" fill="url(#house)"/>
+  <path d="m244 376 218-177 225 177-22 27-203-158-197 158-21-27Z" fill="#415B49"/>
+  <path d="m286 374 176-143 187 143" stroke="#758A72" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M337 425a38 38 0 0 1 76 0v51h-76v-51Z" fill="#9AB19A"/>
+  <path d="M337 477h76v91h-76v-91Z" fill="#D3CCB9"/>
+  <path d="M470 414a38 38 0 0 1 76 0v50h-76v-50Z" fill="#9AB19A"/>
+  <path d="M470 466h76v102h-76V466Z" fill="#D3CCB9"/>
+  <path d="M591 436h35v132h-35z" fill="#E5DDCA"/>
+  <path d="M606 440v12m-6-6h12" stroke="#687E68" stroke-width="3" stroke-linecap="round"/>
+  <path d="M263 568h415" stroke="#637966" stroke-width="8" stroke-linecap="round"/>
+  <path d="M154 547v-83m0 0-28 36m28-36 28 36m-28-73v-27m-34 147v-55m68 55v-55" stroke="#436449" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M711 554v-72m0 0-24 33m24-33 24 33m-24-63v-21m-30 123v-48m60 48v-48" stroke="#47684B" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M99 623c82-35 142-36 218-7m278 20c70-42 139-44 206-14" stroke="#D2D9C8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M88 181c38-26 67-25 100 0m-77 22c25-17 46-16 68 0" stroke="#fff" stroke-opacity=".62" stroke-width="8" stroke-linecap="round"/>
+</svg>
