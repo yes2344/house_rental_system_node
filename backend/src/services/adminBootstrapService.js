@@ -3,6 +3,102 @@ import { hashPassword } from './passwordService.js';
 
 const ownerLockKey = 68127215;
 const ownerLockScope = 2;
+const siteadminLockKey = 68127215;
+const siteadminLockScope = 1;
+
+export async function promoteExistingSiteadmin(client, {
+  email,
+  password,
+  apply = false,
+}) {
+  const username = 'siteadmin';
+  if (typeof password !== 'string' || password.length < 16) {
+    throw new Error('SITEADMIN_BOOTSTRAP_PASSWORD must contain at least 16 characters.');
+  }
+  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('SITEADMIN_BOOTSTRAP_EMAIL must be a valid email address.');
+  }
+
+  if (apply) {
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [siteadminLockKey, siteadminLockScope]);
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [siteadminLockKey, siteadminLockScope + 1]);
+  }
+
+  const matches = await client.query(
+    `SELECT id, username, email, is_active
+     FROM auth_user
+     WHERE lower(username) = lower($1)
+        OR lower(email) = lower($2)
+     ORDER BY id
+     LIMIT 2`,
+    [username, email],
+  );
+  const matchingAccounts = Array.isArray(matches?.rows) ? matches.rows : [];
+
+  if (matchingAccounts.length > 1) {
+    throw new Error('More than one account matches the siteadmin identity.');
+  }
+
+  if (matchingAccounts.length === 0) {
+    throw new Error('The siteadmin account was not found.');
+  }
+
+  const existing = matchingAccounts[0];
+  const conflictingEmail = await client.query(
+    `SELECT id
+     FROM auth_user
+     WHERE lower(email) = lower($1)
+       AND id <> $2
+     LIMIT 1`,
+    [email, existing.id],
+  );
+
+  if (conflictingEmail.rowCount > 0) {
+    throw new Error('The requested siteadmin email is already assigned to another account.');
+  }
+
+  if (existing.is_active === false) {
+    throw new Error('The matching siteadmin account is inactive.');
+  }
+
+  if (!apply) {
+    return { status: 'ready', username: existing.username || username };
+  }
+
+  const passwordHash = await hashPassword(password);
+  await client.query(
+    `UPDATE auth_user
+     SET email = $1,
+         password = $2,
+         is_staff = TRUE,
+         is_superuser = TRUE,
+         is_active = TRUE
+     WHERE id = $3`,
+    [email, passwordHash, existing.id],
+  );
+
+  await client.query(
+    `INSERT INTO accounts_profile
+       (user_id, role, phone, management_permissions, agent_approved,
+        agent_onboarding_required, agent_password_changed, created_at, updated_at)
+     VALUES ($1, 'administrator', '', '[]'::jsonb, FALSE, FALSE, TRUE,
+             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     ON CONFLICT (user_id) DO UPDATE SET
+       role = 'administrator',
+       updated_at = CURRENT_TIMESTAMP`,
+    [existing.id],
+  );
+
+  await client.query(
+    `UPDATE accounts_tabsessiontoken
+     SET revoked_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE user_id = $1`,
+    [existing.id],
+  );
+
+  return { status: 'promoted', username: existing.username || username };
+}
 
 export async function bootstrapPlatformOwner(client, {
   username,

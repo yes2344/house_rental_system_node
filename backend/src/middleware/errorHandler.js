@@ -42,49 +42,27 @@ export function errorHandler({ logger = console }) {
     const statusCode = Number.isInteger(error.statusCode)
       ? error.statusCode
       : Number.isInteger(error.status) && error.status >= 400 && error.status <= 599
-        ? error.status
+      ? error.status
       : error.type === 'entity.parse.failed'
         ? 400
         : error.type === 'entity.too.large'
           ? 413
           : 500;
     if (statusCode >= 500) {
+      const requestPath = request.route?.path
+      ? `${request.baseUrl || ''}${request.route.path}`
+      : request.path || request.originalUrl || '/';
       logger.error('Unhandled API error:', {
-        ...(request.requestId ? { request_id: request.requestId } : {}),
-        method: request.method,
-        path: request.route?.path
-          ? `${request.baseUrl || ''}${request.route.path}`
-          : request.path,
-        status_code: statusCode,
-        ...(typeof request.requestStartedAt === 'bigint'
-          ? { duration_ms: Number((process.hrtime.bigint() - request.requestStartedAt) / 1_000_000n) }
-          : {}),
-        ...(request.uploadStage ? { stage: request.uploadStage } : {}),
-        ...(Number.isInteger(request.uploadFileCount)
-          ? { file_count: request.uploadFileCount }
-          : {}),
-        ...(Number.isSafeInteger(request.uploadFileSizeBytes)
-          ? { file_size_bytes: request.uploadFileSizeBytes }
-          : {}),
-        ...(request.uploadCleanup ? { cleanup: request.uploadCleanup } : {}),
-        ...(request.uploadCleanupErrorCode
-          ? { cleanup_error_code: safeErrorCode(request.uploadCleanupErrorCode) }
-          : {}),
-        code: safeErrorCode(error.code || error.name),
-        ...(typeof error.rollbackError?.code === 'string'
-          ? { rollback_error_code: safeErrorCode(error.rollbackError.code) }
-          : {}),
-        ...(/^[0-9A-Z]{5}$/.test(error.code || '')
-          ? { sqlstate: error.code }
-          : {}),
-        ...postgresDiagnostics(error),
+      method: request.method,
+      path: String(requestPath).split('?')[0].split('#')[0] || '/',
+      code: safeErrorCode(error.code || error.name),
       });
     }
     response.status(statusCode).json({
       error: {
-        status_code: statusCode,
-        message: statusCode >= 500 ? 'The server encountered an error.' : error.message,
-        details: error.details || {},
+      status_code: statusCode,
+      message: statusCode >= 500 ? 'The server encountered an error.' : error.message,
+      details: error.details || {},
       },
     });
   };

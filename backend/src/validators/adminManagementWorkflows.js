@@ -26,6 +26,7 @@ export const workflowPaginationSchema = z.object({
   role: z.enum(['customer', 'owner', 'agent', 'administrator']).optional(),
   'profile__role': z.enum(['customer', 'owner', 'agent', 'administrator']).optional(),
   is_active: z.enum(['true', 'false']).optional(),
+  include_inactive: z.enum(['true', 'false']).optional(),
   agent_approved: z.enum(['true', 'false']).optional(),
   'profile__agent_approved': z.enum(['true', 'false']).optional(),
 }).strict();
@@ -121,8 +122,8 @@ export const managedPropertyCreateSchema = z.object({
   listing_type: z.enum(['sale', 'rent']).default('sale'),
   price: price.optional().default(null),
   currency: z.enum(['ETB', 'USD']).optional().default('ETB'),
-  bedrooms: z.number().int().min(0).max(100).default(0),
-  bathrooms: z.number().int().min(0).max(100).default(0),
+  bedrooms: z.number().int().min(0).max(1_000_000).default(0),
+  bathrooms: z.number().int().min(0).max(1_000_000).default(0),
   area_sqft: z.number().int().min(0).max(2_147_483_647).default(0),
   area_value: z.union([z.string(), z.number()]).transform(String)
     .refine((value) => /^\d{1,10}(\.\d{1,2})?$/.test(value) && Number(value) >= 0.01)
@@ -146,8 +147,8 @@ export const managedPropertyPatchSchema = z.object({
   listing_type: z.enum(['sale', 'rent']).optional(),
   price: price.optional(),
   currency: z.enum(['ETB', 'USD']).optional(),
-  bedrooms: z.number().int().min(0).max(100).optional(),
-  bathrooms: z.number().int().min(0).max(100).optional(),
+  bedrooms: z.number().int().min(0).max(1_000_000).optional(),
+  bathrooms: z.number().int().min(0).max(1_000_000).optional(),
   area_sqft: z.number().int().min(0).max(2_147_483_647).optional(),
   area_value: z.union([z.string(), z.number()]).transform(String)
     .refine((value) => /^\d{1,10}(\.\d{1,2})?$/.test(value) && Number(value) >= 0.01).nullable().optional(),

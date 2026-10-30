@@ -95,6 +95,43 @@ test('managed-property filters validate and apply an agent-owned listing scope',
   assert.deepEqual(result.results[0].amenities, [2]);
 });
 
+test('administrator managed listings exclude owner-submitted properties', async () => {
+  const calls = [];
+  const pool = {
+    async query(text, values = []) {
+      calls.push({ text, values });
+      if (text.includes('FROM auth_user AS account')) {
+        return {
+          rows: [{
+            is_active: true,
+            is_staff: true,
+            is_superuser: false,
+            role: 'administrator',
+            agent_approved: false,
+          }],
+          rowCount: 1,
+        };
+      }
+      if (text.includes('COUNT(*)::integer')) return { rows: [{ count: 1 }], rowCount: 1 };
+      assert.match(text, /WITH RECURSIVE location_ancestor/);
+      return { rows: [managedPropertyRow()], rowCount: 1 };
+    },
+  };
+
+  const result = await listManagedProperties(
+    pool,
+    { originalUrl: '/api/v1/management/properties/', protocol: 'https', get: () => 'homes.example.test' },
+    3,
+    managedPropertyQuerySchema.parse({}),
+  );
+
+  assert.match(calls[1].text, /WHERE p\.service_type = 'agent_managed'/);
+  assert.match(calls[2].text, /WHERE p\.service_type = 'agent_managed'/);
+  assert.deepEqual(calls[1].values, []);
+  assert.equal(result.count, 1);
+  assert.equal(result.results.length, 1);
+});
+
 test('managed-property listing rejects users without management privileges', async () => {
   let listQueries = 0;
   const pool = {

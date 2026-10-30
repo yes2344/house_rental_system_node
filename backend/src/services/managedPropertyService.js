@@ -91,7 +91,7 @@ export async function listManagedProperties(pool, request, userId, filters) {
   };
 
   if (scope.allProperties) {
-    conditions.push('TRUE');
+    conditions.push("p.service_type = 'agent_managed'");
   } else {
     addCondition(
       "p.service_type = 'agent_managed' AND p.submitted_by_id = ?",

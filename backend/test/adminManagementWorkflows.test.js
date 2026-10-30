@@ -9,6 +9,7 @@ import { adminManagementWorkflowsRouter } from '../src/routes/adminManagementWor
 import { errorHandler } from '../src/middleware/errorHandler.js';
 import {
   homepageNotePatchSchema,
+  managedPropertyCreateSchema,
   managedPropertyPatchSchema,
 } from '../src/validators/adminManagementWorkflows.js';
 
@@ -19,6 +20,11 @@ let server;
 let origin;
 const transactionQueries = [];
 const managedPropertyInsertQueries = [];
+const publicAccountListQueries = [];
+let accountManagementTarget;
+let accountDeleteDependencies = [];
+let accountHistoryExists = false;
+let accountVisibleInList = false;
 let managedPropertiesToDelete = [];
 let propertyImagesToDelete = [];
 let propertiesWithViewingRequests = [];
@@ -66,8 +72,19 @@ const pool = {
         }],
       };
     }
+    if (sql.startsWith('SELECT COUNT(*)::int AS count FROM (SELECT u.id')) {
+      publicAccountListQueries.push({ sql, values });
+      return { rowCount: 1, rows: [{ count: accountVisibleInList ? 1 : 0 }] };
+    }
+    if (sql.startsWith('SELECT id, username, email, first_name, last_name, is_active, date_joined')
+      && sql.includes('FROM (SELECT u.id')) {
+      return {
+        rowCount: accountVisibleInList ? 1 : 0,
+        rows: accountVisibleInList && accountManagementTarget ? [{ ...accountManagementTarget }] : [],
+      };
+    }
     if (sql.includes('FROM auth_user u JOIN accounts_profile p')) {
-      return { rowCount: 1, rows: [{ ...agentAccount }] };
+      return { rowCount: 1, rows: [{ ...(accountManagementTarget ?? agentAccount) }] };
     }
     if (sql.includes('SELECT id FROM auth_user WHERE lower(username)')) {
       return { rowCount: 0, rows: [] };
@@ -106,6 +123,19 @@ const pool = {
     return {
       async query(sql, values = []) {
         transactionQueries.push({ sql, values });
+        if (sql.includes('FROM pg_constraint AS foreign_key_constraint')) {
+          return { rowCount: accountDeleteDependencies.length, rows: accountDeleteDependencies };
+        }
+        if (sql.includes('FOR UPDATE') && sql.includes('FROM auth_user WHERE id = $1')) {
+          return { rowCount: 1, rows: [{ id: values[0] }] };
+        }
+        if (sql.startsWith('SELECT 1 FROM "public"."')) {
+          return { rowCount: accountHistoryExists ? 1 : 0, rows: accountHistoryExists ? [{ '?column?': 1 }] : [] };
+        }
+        if (sql.startsWith('DELETE FROM auth_user WHERE id = $1')) {
+          accountVisibleInList = false;
+          return { rowCount: 1, rows: [] };
+        }
         if (sql.includes('SELECT id, title, service_type FROM user_property')) {
           const ids = new Set(values[0].map(Number));
           const rows = managedPropertiesToDelete.filter((row) => ids.has(row.id));
@@ -239,6 +269,141 @@ test('management public pages list uses the authenticated workflow route', async
   const data = await response.json();
   assert.equal(data.count, 3);
   assert.deepEqual(data.results.map((page) => page.page), ['about', 'contact', 'property-management']);
+});
+
+test('public account list hides inactive accounts by default and can include them on request', async () => {
+  publicAccountListQueries.length = 0;
+  const headers = { Authorization: ['Bearer', token].join(' ') };
+
+  const activeResponse = await fetch(`${origin}/admin/public-accounts/`, { headers });
+  assert.equal(activeResponse.status, 200);
+  assert.equal(activeResponse.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(publicAccountListQueries[0].values, [true]);
+  assert.match(publicAccountListQueries[0].sql, /is_active = \$1/);
+
+  const allResponse = await fetch(`${origin}/admin/public-accounts/?include_inactive=true`, { headers });
+  assert.equal(allResponse.status, 200);
+  assert.equal(allResponse.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(publicAccountListQueries[1].values, []);
+  assert.doesNotMatch(publicAccountListQueries[1].sql, /is_active =/);
+});
+
+test('delete permanently removes an agent account when it has no linked history', async () => {
+  transactionQueries.length = 0;
+  accountManagementTarget = { ...agentAccount };
+  accountDeleteDependencies = [{
+    schema_name: 'public',
+    table_name: 'accounts_profile',
+    column_name: 'user_id',
+  }];
+  accountHistoryExists = false;
+  try {
+    const response = await fetch(`${origin}/admin/delegated-accounts/42/`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: ['Bearer', token].join(' '),
+        Cookie: `csrftoken=${csrf}`,
+        'X-CSRFToken': csrf,
+      },
+    });
+
+    assert.equal(response.status, 204);
+    assert.ok(transactionQueries.some(({ sql, values }) =>
+      sql === 'DELETE FROM auth_user WHERE id = $1' && values[0] === 42));
+    assert.ok(transactionQueries.some(({ sql, values }) =>
+      sql.includes('DELETE FROM "public"."accounts_profile"') && values[0] === 42));
+    assert.ok(transactionQueries.some(({ sql, values }) =>
+      sql.includes('INSERT INTO portal_admin_adminauditevent')
+      && values[2] === 'delegated_account_deleted'));
+  } finally {
+    accountManagementTarget = undefined;
+    accountDeleteDependencies = [];
+    accountHistoryExists = false;
+  }
+});
+
+test('deleted public accounts stay absent from the inactive list after refresh', async () => {
+  transactionQueries.length = 0;
+  publicAccountListQueries.length = 0;
+  accountManagementTarget = {
+    ...agentAccount,
+    role: 'customer',
+    is_active: false,
+    assigned_city_id: null,
+    agent_approved: false,
+    agent_onboarding_required: false,
+    management_permissions: [],
+  };
+  accountDeleteDependencies = [{
+    schema_name: 'public',
+    table_name: 'accounts_profile',
+    column_name: 'user_id',
+  }];
+  accountHistoryExists = false;
+  accountVisibleInList = true;
+  const headers = { Authorization: ['Bearer', token].join(' ') };
+  try {
+    const before = await fetch(`${origin}/admin/public-accounts/?include_inactive=true`, { headers });
+    assert.equal(before.status, 200);
+    assert.equal((await before.json()).count, 1);
+
+    const deleted = await fetch(`${origin}/admin/public-accounts/42/`, {
+      method: 'DELETE',
+      headers: {
+        ...headers,
+        Cookie: `csrftoken=${csrf}`,
+        'X-CSRFToken': csrf,
+      },
+    });
+    assert.equal(deleted.status, 204);
+
+    const after = await fetch(`${origin}/admin/public-accounts/?include_inactive=true`, { headers });
+    assert.equal(after.status, 200);
+    assert.equal(after.headers.get('cache-control'), 'no-store');
+    assert.equal((await after.json()).count, 0);
+  } finally {
+    accountManagementTarget = undefined;
+    accountDeleteDependencies = [];
+    accountHistoryExists = false;
+    accountVisibleInList = false;
+  }
+});
+
+test('delete blocks permanent removal of a public account with linked records', async () => {
+  transactionQueries.length = 0;
+  accountManagementTarget = {
+    ...agentAccount,
+    role: 'customer',
+    is_active: true,
+    assigned_city_id: null,
+    agent_approved: false,
+    agent_onboarding_required: false,
+    management_permissions: [],
+  };
+  accountDeleteDependencies = [{
+    schema_name: 'public',
+    table_name: 'user_property',
+    column_name: 'owner_id',
+  }];
+  accountHistoryExists = true;
+  try {
+    const response = await fetch(`${origin}/admin/public-accounts/42/`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: ['Bearer', token].join(' '),
+        Cookie: `csrftoken=${csrf}`,
+        'X-CSRFToken': csrf,
+      },
+    });
+
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error.message, /linked records.*deactivate/i);
+    assert.equal(transactionQueries.some(({ sql }) => sql === 'DELETE FROM auth_user WHERE id = $1'), false);
+  } finally {
+    accountManagementTarget = undefined;
+    accountDeleteDependencies = [];
+    accountHistoryExists = false;
+  }
 });
 
 test('management public pages list includes defaults when database rows are missing', async () => {
@@ -528,4 +693,20 @@ test('partial update schemas preserve omitted fields and reject unsupported fiel
   assert.equal(managedPropertyPatchSchema.safeParse({ currency: 'CAD' }).success, false);
   assert.deepEqual(homepageNotePatchSchema.parse({ title: 'Updated' }), { title: 'Updated' });
   assert.equal(managedPropertyPatchSchema.safeParse({ is_featured: true }).success, false);
+});
+
+test('managed property bedroom and bathroom limits support the configured range', () => {
+  const createInput = managedPropertyCreateSchema.parse({
+    title: 'Large property',
+    location: 'Addis Ababa',
+    bedrooms: 1_000_000,
+    bathrooms: 1_000_000,
+  });
+  assert.equal(createInput.bedrooms, 1_000_000);
+  assert.equal(createInput.bathrooms, 1_000_000);
+  assert.equal(managedPropertyCreateSchema.safeParse({ title: 'Home', location: 'Bole', bedrooms: -1 }).success, false);
+  assert.equal(managedPropertyCreateSchema.safeParse({ title: 'Home', location: 'Bole', bathrooms: 1_000_001 }).success, false);
+  assert.equal(managedPropertyPatchSchema.safeParse({ bedrooms: 1_000_000, bathrooms: 1_000_000 }).success, true);
+  assert.equal(managedPropertyPatchSchema.safeParse({ bedrooms: 1_000_001 }).success, false);
+  assert.equal(managedPropertyPatchSchema.safeParse({ bathrooms: -1 }).success, false);
 });

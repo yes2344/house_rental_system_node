@@ -71,22 +71,35 @@ function messageContent(message, frontendUrl) {
   const isVerification = message.purpose === 'verification';
   const subject = isVerification ? 'Verify your Infinity House email' : 'Reset your Infinity House password';
   if (!message.uid || !message.token) {
+    const text = isVerification
+      ? 'If this address belongs to an unverified Infinity House account, follow the verification instructions requested from the site.'
+      : 'If this address belongs to an Infinity House account, a password reset was requested. If you did not request it, you can ignore this message.';
     return {
       subject,
-      text: isVerification
-        ? 'If this address belongs to an unverified Infinity House account, follow the verification instructions requested from the site.'
-        : 'If this address belongs to an Infinity House account, a password reset was requested. If you did not request it, you can ignore this message.',
+      text,
+      html: `<p>${text}</p>`,
     };
   }
 
   const link = new URL(isVerification ? '/verify-email' : '/reset-password', frontendUrl);
   link.searchParams.set('uid', message.uid);
   link.searchParams.set('token', message.token);
+  const escapedLink = link.toString()
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+  const action = isVerification ? 'Verify email address' : 'Set a new password';
+  const instruction = isVerification
+    ? 'Confirm your email address using this link:'
+    : 'Choose a new password using this link:';
+  const ignoreMessage = 'If you did not request this message, you can ignore it.';
   return {
     subject,
     text: `${isVerification
       ? 'Confirm your email address using this link:'
       : 'Choose a new password using this link:'}\n\n${link}\n\nIf you did not request this message, you can ignore it.`,
+    html: `<p>${instruction}</p><p><a href="${escapedLink}">${action}</a></p><p>If you did not request this message, you can ignore it.</p>`,
   };
 }
 

@@ -58,7 +58,28 @@ test('SMTP sender sends one-time links over a TLS-required transport', async () 
   assert.equal(sentMessage.to, 'customer@example.test');
   assert.equal(sentMessage.from, 'Infinity House <noreply@example.test>');
   assert.match(sentMessage.text, /https:\/\/homes\.example\.test\/verify-email\?uid=15&token=one-time-token/);
-  assert.equal(sentMessage.html, undefined);
+  assert.match(sentMessage.html, /href="https:\/\/homes\.example\.test\/verify-email\?uid=15&amp;token=one-time-token"/);
+  assert.match(sentMessage.html, />Verify email address<\/a>/);
+});
+
+test('SMTP sender provides an explicit password reset link in plain text and HTML', async () => {
+  let sentMessage;
+  const sendEmail = createEmailSender({
+    environment: productionEnvironment(),
+    logger: console,
+    createTransport: () => ({ async sendMail(message) { sentMessage = message; } }),
+  });
+
+  await sendEmail({
+    to: 'customer@example.test',
+    purpose: 'password_reset',
+    uid: '15',
+    token: 'reset-token',
+  });
+
+  assert.match(sentMessage.text, /https:\/\/homes\.example\.test\/reset-password\?uid=15&token=reset-token/);
+  assert.match(sentMessage.html, /href="https:\/\/homes\.example\.test\/reset-password\?uid=15&amp;token=reset-token"/);
+  assert.match(sentMessage.html, />Set a new password<\/a>/);
 });
 
 test('SMTP sender does not include a token for an unknown account', async () => {
@@ -78,6 +99,8 @@ test('SMTP sender does not include a token for an unknown account', async () => 
 
   assert.equal(sentMessage.text.includes('uid='), false);
   assert.equal(sentMessage.text.includes('token='), false);
+  assert.equal(sentMessage.html.includes('href='), false);
+  assert.equal(sentMessage.html.includes('token='), false);
 });
 
 test('SMTP sender rejects missing configuration and surfaces provider failures', async () => {

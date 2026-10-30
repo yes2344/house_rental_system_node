@@ -138,6 +138,70 @@ async function requirePublicPageManager(pool, userId) {
   return user;
 }
 
+function quoteIdentifier(identifier) {
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+async function assertAccountHasNoHistory(client, userId) {
+  const dependencies = await client.query(
+    `SELECT referencing_namespace.nspname AS schema_name,
+            referencing_table.relname AS table_name,
+            referencing_column.attname AS column_name
+     FROM pg_constraint AS foreign_key_constraint
+     JOIN pg_class AS referenced_table
+       ON referenced_table.oid = foreign_key_constraint.confrelid
+     JOIN LATERAL unnest(foreign_key_constraint.conkey) WITH ORDINALITY AS foreign_key(attnum, ordinality)
+       ON TRUE
+     JOIN LATERAL unnest(foreign_key_constraint.confkey) WITH ORDINALITY AS referenced_key(attnum, ordinality)
+       ON referenced_key.ordinality = foreign_key.ordinality
+     JOIN pg_class AS referencing_table
+       ON referencing_table.oid = foreign_key_constraint.conrelid
+     JOIN pg_namespace AS referencing_namespace
+       ON referencing_namespace.oid = referencing_table.relnamespace
+     JOIN pg_attribute AS referencing_column
+       ON referencing_column.attrelid = referencing_table.oid
+      AND referencing_column.attnum = foreign_key.attnum
+     JOIN pg_attribute AS referenced_column
+       ON referenced_column.attrelid = referenced_table.oid
+      AND referenced_column.attnum = referenced_key.attnum
+     WHERE foreign_key_constraint.contype = 'f'
+       AND referenced_table.oid = to_regclass('auth_user')
+       AND referenced_column.attname = 'id'
+       AND referencing_namespace.nspname = ANY(current_schemas(false))
+       AND referencing_table.oid <> referenced_table.oid`,
+  );
+  const accountOwnedTables = new Set([
+    'accounts_profile',
+    'accounts_tabsessiontoken',
+    'accounts_userpreferences',
+    'accounts_emailverificationtoken',
+    'accounts_delegatedaccountinvitation',
+    'auth_user_groups',
+    'auth_user_user_permissions',
+  ]);
+  const ownedReferences = [];
+
+  for (const dependency of dependencies.rows) {
+    if (accountOwnedTables.has(dependency.table_name)) {
+      ownedReferences.push(dependency);
+      continue;
+    }
+    const reference = await client.query(
+      `SELECT 1 FROM ${quoteIdentifier(dependency.schema_name)}.${quoteIdentifier(dependency.table_name)}
+       WHERE ${quoteIdentifier(dependency.column_name)} = $1
+       LIMIT 1`,
+      [userId],
+    );
+    if (reference.rowCount > 0) {
+      throw new ApiError(
+        409,
+        'This account has linked records and cannot be permanently deleted. Deactivate the account instead.',
+      );
+    }
+  }
+  return ownedReferences;
+}
+
 async function writeAudit(client, user, action, objectType, objectId, changes = {}) {
   await client.query(
     `INSERT INTO portal_admin_adminauditevent
@@ -243,6 +307,9 @@ function queryFilters(request, options = {}) {
   if (page.property_type && options.propertyTypeColumn) add(`${options.propertyTypeColumn} = ?`, page.property_type);
   if (role && options.roleColumn) add(`${options.roleColumn} = ?`, role);
   if (page.is_active && options.activeColumn) add(`${options.activeColumn} = ?`, page.is_active === 'true');
+  else if (options.defaultActive && page.include_inactive !== 'true') {
+    add(`${options.activeColumn} = ?`, true);
+  }
   if (approved && options.approvedColumn) add(`${options.approvedColumn} = ?`, approved === 'true');
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   return { page, params, whereSql };
@@ -729,9 +796,11 @@ export function adminManagementWorkflowsRouter({ pool, mediaConfig, logger = con
         searchClause: (p) => `(username ILIKE ${p} OR email ILIKE ${p} OR first_name ILIKE ${p} OR last_name ILIKE ${p})`,
         defaultOrder: 'date_joined DESC, id DESC',
         ordering: { username: 'username ASC, id ASC', '-date_joined': 'date_joined DESC, id DESC' },
+        activeColumn: 'is_active',
+        defaultActive: !delegated,
         serialize: accountData,
       });
-      res.json(result);
+      res.set('Cache-Control', 'no-store').set('Pragma', 'no-cache').json(result);
     }));
 
     router.post(pathName, asyncRoute(async (req, res) => {
@@ -744,8 +813,7 @@ export function adminManagementWorkflowsRouter({ pool, mediaConfig, logger = con
         );
         if (!city.rowCount) throw new ApiError(400, 'Choose an active city.');
       }
-      const password = delegated ? input.password : input.password;
-      const hash = await hashPassword(password);
+      const hash = await hashPassword(input.password);
       const created = await withTransaction(pool, async (client) => {
         const role = delegated ? 'agent' : input.role;
         const account = await client.query(
@@ -843,12 +911,22 @@ export function adminManagementWorkflowsRouter({ pool, mediaConfig, logger = con
       }
       if (req.method === 'DELETE') {
         await withTransaction(pool, async (client) => {
-          await client.query('UPDATE auth_user SET is_active = FALSE WHERE id = $1', [id]);
-          await client.query(
-            'UPDATE accounts_tabsessiontoken SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND revoked_at IS NULL', [id],
+          const locked = await client.query(
+            'SELECT id FROM auth_user WHERE id = $1 FOR UPDATE',
+            [id],
           );
-          await writeAudit(client, actor, delegated ? 'delegated_account_deactivated' : 'public_account_deactivated',
-            'user', id, { is_active: { from: row.is_active, to: false } });
+          if (!locked.rowCount) throw new ApiError(404, 'Account not found.');
+          const ownedReferences = await assertAccountHasNoHistory(client, id);
+          for (const reference of ownedReferences) {
+            await client.query(
+              `DELETE FROM ${quoteIdentifier(reference.schema_name)}.${quoteIdentifier(reference.table_name)}
+               WHERE ${quoteIdentifier(reference.column_name)} = $1`,
+              [id],
+            );
+          }
+          await client.query('DELETE FROM auth_user WHERE id = $1', [id]);
+          await writeAudit(client, actor, delegated ? 'delegated_account_deleted' : 'public_account_deleted',
+            'user', id, { username: row.username, role: row.role });
         });
         res.status(204).end();
         return;

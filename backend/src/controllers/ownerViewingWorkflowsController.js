@@ -7,6 +7,7 @@ import {
   createViewingRequest,
   decideSubmission,
   deleteCustomerViewingRequest,
+  deleteManagementViewingRequest,
   deleteManagementSubmissions,
   deleteOwnerSubmissions,
   getCustomerViewingRequest,
@@ -39,7 +40,7 @@ const endpoint = (operation, statusCode = 200) => async (request, response, next
   }
 };
 
-export function ownerViewingWorkflowsController({ pool }) {
+export function ownerViewingWorkflowsController({ pool, mediaConfig, logger }) {
   return {
     ownerSubmissionList: endpoint((request) => listOwnerSubmissions(
       pool, request, request.userId, request.validated.query,
@@ -54,13 +55,13 @@ export function ownerViewingWorkflowsController({ pool }) {
       pool, request.userId, request.params.submissionId, request.validated.body, request,
     )),
     ownerSubmissionBulkDelete: endpoint((request) => deleteOwnerSubmissions(
-      pool, request.userId, request.validated.body.ids,
+      pool, request.userId, request.validated.body.ids, mediaConfig, logger,
     )),
     managementSubmissionList: endpoint((request) => listManagementSubmissions(
       pool, request, request.userId, request.validated.query,
     )),
     managementSubmissionBulkDelete: endpoint((request) => deleteManagementSubmissions(
-      pool, request.userId, request.validated.body.ids,
+      pool, request.userId, request.validated.body.ids, mediaConfig, logger,
     )),
     managementSubmissionReviewers: endpoint((request) => listSubmissionReviewers(
       pool, request.userId,
@@ -106,6 +107,9 @@ export function ownerViewingWorkflowsController({ pool }) {
       pool, request, request.userId, request.validated.query,
     )),
     managementViewingDetail: endpoint((request) => getManagementViewingRequest(
+      pool, request.userId, request.params.requestId,
+    )),
+    managementViewingDelete: endpoint((request) => deleteManagementViewingRequest(
       pool, request.userId, request.params.requestId,
     )),
     managementViewingPatch: endpoint((request) => patchManagementViewingRequest(

@@ -9,6 +9,9 @@ import {
   createOwnerSubmission,
   createViewingRequest,
   deleteCustomerViewingRequest,
+  deleteManagementViewingRequest,
+  deleteManagementSubmissions,
+  deleteOwnerSubmissions,
   patchCustomerViewingRequest,
   listManagementSubmissions,
   listOwnerSubmissions,
@@ -27,6 +30,41 @@ const customer = {
   id: 12, is_active: true, is_staff: false, is_superuser: false,
   role: 'customer', agent_approved: false, management_permissions: [],
 };
+
+function createSubmissionDeletionPool({
+  user = customer,
+  viewingRequests = [],
+  submissionStatus = 'approved',
+} = {}) {
+  const transactionCalls = [];
+  return {
+    transactionCalls,
+    async connect() {
+      return {
+        async query(sql, values = []) {
+          transactionCalls.push({ sql, values });
+          if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [], rowCount: 0 };
+          if (sql.includes('FROM auth_user AS u')) return { rows: [user], rowCount: 1 };
+          if (sql.includes('FROM owner_announcements_ownerannouncement a')
+            && sql.includes('FOR UPDATE OF a, p')) {
+            return {
+              rows: [{
+                id: 61, property_id: 44, status: submissionStatus, title: 'Reviewed home', has_agreement: false,
+              }],
+              rowCount: 1,
+            };
+          }
+          if (sql.includes('SELECT DISTINCT property_id FROM user_viewingrequest')) {
+            return { rows: viewingRequests, rowCount: viewingRequests.length };
+          }
+          if (sql.includes('FROM user_propertyimage')) return { rows: [], rowCount: 0 };
+          return { rows: [], rowCount: 0 };
+        },
+        release() {},
+      };
+    },
+  };
+}
 
 function createPool({ account = customer, duplicate = false } = {}) {
   const calls = [];
@@ -86,6 +124,117 @@ test('workflow validators reject protected fields and malformed decisions', () =
   }).success, true);
   assert.equal(decisionSchema.safeParse({ action: 'publish' }).success, false);
   assert.equal(viewingManagerPatchSchema.safeParse({ status: 'confirmed' }).success, false);
+});
+
+test('administrator submission deletion removes dependent records before approved property', async () => {
+  const admin = {
+    id: 3, username: 'admin', is_active: true, is_staff: true, is_superuser: false,
+    role: 'administrator', management_permissions: ['announcements.review'],
+  };
+  const pool = createSubmissionDeletionPool({ user: admin });
+
+  const result = await deleteManagementSubmissions(pool, admin.id, [44]);
+
+  assert.deepEqual(result, { deleted_count: 1 });
+  const queries = pool.transactionCalls.map(({ sql }) => sql);
+  assert.ok(queries.some((sql) => sql.includes('DELETE FROM owner_announcements_ownerannouncementagreement')));
+  assert.ok(queries.some((sql) => sql.includes('DELETE FROM owner_announcements_ownerannouncementevent')));
+  assert.ok(queries.some((sql) => sql.includes('DELETE FROM owner_announcements_inappnotification')));
+  assert.ok(queries.some((sql) => sql.includes('UPDATE properties_listingreport SET property_id = NULL')));
+  assert.ok(queries.some((sql) => sql.includes('DELETE FROM user_property WHERE id = ANY')));
+  assert.ok(queries.indexOf(queries.find((sql) => sql.includes('DELETE FROM owner_announcements_ownerannouncementagreement')))
+    < queries.findIndex((sql) => sql.includes('DELETE FROM user_property WHERE id = ANY')));
+  assert.ok(queries.includes('COMMIT'));
+});
+
+test('owner submission deletion uses the same dependent-record cleanup', async () => {
+  const pool = createSubmissionDeletionPool({ submissionStatus: 'pending_review' });
+
+  const result = await deleteOwnerSubmissions(pool, customer.id, [44]);
+
+  assert.deepEqual(result, { deleted_count: 1 });
+  assert.ok(pool.transactionCalls.some(({ sql }) => sql.includes('DELETE FROM owner_announcements_ownerannouncement')));
+  assert.ok(pool.transactionCalls.some(({ sql }) => sql.includes('DELETE FROM user_propertyimage')));
+  assert.ok(pool.transactionCalls.some(({ sql }) => sql.includes('DELETE FROM user_property WHERE id = ANY')));
+});
+
+test('submission deletion returns a conflict rather than failing when viewings exist', async () => {
+  const admin = {
+    id: 3, username: 'admin', is_active: true, is_staff: true, is_superuser: false,
+    role: 'administrator', management_permissions: ['announcements.review'],
+  };
+  const pool = createSubmissionDeletionPool({
+    user: admin,
+    viewingRequests: [{ property_id: 44 }],
+  });
+
+  await assert.rejects(
+    deleteManagementSubmissions(pool, admin.id, [44]),
+    (error) => error.statusCode === 409 && /viewing requests/i.test(error.message),
+  );
+  assert.ok(pool.transactionCalls.some(({ sql }) => sql === 'ROLLBACK'));
+  assert.equal(
+    pool.transactionCalls.some(({ sql }) => sql.includes('DELETE FROM user_property WHERE id = ANY')),
+    false,
+  );
+});
+
+test('management viewing request deletion removes linked notifications, events, and request transactionally', async () => {
+  const admin = {
+    id: 3, username: 'admin', is_active: true, is_staff: true, is_superuser: true,
+    role: 'administrator', management_permissions: [],
+  };
+  const calls = [];
+  const pool = {
+    async connect() {
+      return {
+        async query(sql, values = []) {
+          calls.push({ sql, values });
+          if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [], rowCount: 0 };
+          if (sql.includes('FROM auth_user AS u')) return { rows: [admin], rowCount: 1 };
+          if (sql.includes('FROM user_viewingrequest r JOIN user_property p')
+            && sql.includes('FOR UPDATE OF r')) {
+            return {
+              rows: [{
+                id: 71, property_id: 44, requester_id: 12, status: 'confirmed',
+                title: 'Test house', slug: 'test-house', location: 'Addis Ababa',
+                full_name: 'Customer', email: 'customer@example.test', phone: '123',
+                preferred_date: '2099-12-30', preferred_time: '10:00',
+                proposed_date: null, proposed_time: null, scheduled_date: '2099-12-30',
+                scheduled_time: '10:00', message: '', agent_notes: '', events: [],
+              }],
+              rowCount: 1,
+            };
+          }
+          return { rows: [], rowCount: 1 };
+        },
+        release() {},
+      };
+    },
+  };
+
+  const result = await deleteManagementViewingRequest(pool, admin.id, 71);
+
+  assert.equal(result, null);
+  const deletes = calls.filter(({ sql }) => sql.startsWith('DELETE FROM'));
+  assert.deepEqual(deletes.map(({ sql }) => sql.trim().split(/\s+/).slice(0, 3).join(' ')), [
+    'DELETE FROM owner_announcements_inappnotification',
+    'DELETE FROM viewings_viewingrequestevent',
+    'DELETE FROM user_viewingrequest',
+  ]);
+  assert.deepEqual(deletes[0].values, ['viewing:71:event:%']);
+  assert.deepEqual(deletes[1].values, [71]);
+  assert.deepEqual(deletes[2].values, [71]);
+  assert.ok(calls.some(({ sql }) => sql === 'COMMIT'));
+});
+
+test('management viewing request deletion rejects users without management access', async () => {
+  const pool = createPool();
+  await assert.rejects(
+    deleteManagementViewingRequest(pool, customer.id, 71),
+    (error) => error.statusCode === 403,
+  );
+  assert.equal(pool.transactionCalls.some(({ sql }) => sql.startsWith('DELETE FROM')), false);
 });
 
 test('viewing creation is transactional and uses bound values for user-provided fields', async () => {
@@ -218,6 +367,43 @@ test('owner and reviewer queue SQL is scoped to the authenticated account', asyn
   const scopedReview = reviewPool.calls.find(({ sql }) => sql.includes('COALESCE(events.items'));
   assert.ok(scopedReview.sql.includes('a.assigned_reviewer_id = $1'));
   assert.equal(scopedReview.values[0], 12);
+});
+
+test('review queue exposes property IDs used by submission management actions', async () => {
+  const administrator = {
+    ...customer, is_staff: true, role: 'administrator',
+    management_permissions: ['announcements.review'],
+  };
+  const row = {
+    id: 44,
+    announcement_id: 91,
+    title: 'Test house',
+    slug: 'test-house',
+    location: 'Addis Ababa',
+    price: '1000',
+    images: [],
+    status: 'available',
+    submission_status: 'pending_review',
+  };
+  const pool = {
+    async query(sql) {
+      if (sql.includes('FROM auth_user AS u')) return { rows: [administrator], rowCount: 1 };
+      if (sql.includes('COUNT(*)')) return { rows: [{ count: 1 }], rowCount: 1 };
+      if (sql.includes('COALESCE(events.items')) return { rows: [row], rowCount: 1 };
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+  };
+
+  const result = await listManagementSubmissions(
+    pool,
+    { originalUrl: '/management/submissions/', protocol: 'http', get: () => 'localhost' },
+    administrator.id,
+    { ordering: '-submitted_at', page: 1, page_size: 12 },
+  );
+
+  assert.equal(result.results[0].id, row.id);
+  assert.equal(result.results[0].property.id, row.id);
+  assert.notEqual(result.results[0].id, row.announcement_id);
 });
 
 test('notification reads always include recipient scope in the update', async () => {
@@ -427,6 +613,12 @@ test('frontend PATCH/DELETE detail methods and receipt POST are registered', asy
     headers: { authorization: 'Bearer invalid' },
   });
   assert.equal(remove.status, 401);
+
+  const managementRemove = await fetch(`${base}/management/viewing-requests/71/`, {
+    method: 'DELETE',
+    headers: { authorization: 'Bearer invalid' },
+  });
+  assert.equal(managementRemove.status, 401);
 
   const receipt = await fetch(`${base}/viewing-requests/receipt/`, {
     method: 'POST',

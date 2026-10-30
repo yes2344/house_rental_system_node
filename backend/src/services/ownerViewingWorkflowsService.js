@@ -1,6 +1,8 @@
+import { unlink } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { withTransaction } from '../db.js';
 import { ApiError } from '../errors.js';
+import { storedMediaPath } from './propertyImageService.js';
 import { requestOrigin } from '../requestOrigin.js';
 
 const activeRequestStatuses = ['pending', 'proposed', 'confirmed', 'declined'];
@@ -517,8 +519,92 @@ export async function patchOwnerSubmission(pool, userId, submissionId, input, re
   });
 }
 
-export async function deleteOwnerSubmissions(pool, userId, ids) {
-  return withTransaction(pool, async (client) => {
+async function removeSubmissionProperties(client, rows, user, mediaConfig) {
+  const propertyIds = rows.map((row) => row.property_id);
+  const announcementIds = rows.map((row) => row.id);
+  const viewingRequests = await client.query(
+    'SELECT DISTINCT property_id FROM user_viewingrequest WHERE property_id = ANY($1::bigint[])',
+    [propertyIds],
+  );
+  if (viewingRequests.rowCount) {
+    throw conflict('Submissions with viewing requests cannot be permanently deleted.');
+  }
+  const images = await client.query(
+    `SELECT id, property_id, image, original_image FROM user_propertyimage
+     WHERE property_id = ANY($1::bigint[]) ORDER BY id`,
+    [propertyIds],
+  );
+  if (images.rowCount && !mediaConfig) {
+    throw new Error('Media storage is required to delete submission photos.');
+  }
+  const imageFiles = images.rows.flatMap((image) => [
+    image.image
+      ? {
+        imageId: image.id,
+        path: storedMediaPath(mediaConfig.publicRoot, image.image, 'property_images'),
+      }
+      : null,
+    image.original_image
+      ? {
+        imageId: image.id,
+        path: storedMediaPath(mediaConfig.privateRoot, image.original_image, 'private_property_images'),
+      }
+      : null,
+  ].filter(Boolean));
+
+  for (const row of rows) {
+    await addAdminAudit(client, user, 'owner_submission_deleted', row.id, {
+      property_title: row.title, submission_status: row.status,
+    });
+  }
+  await client.query(
+    'UPDATE properties_listingreport SET property_id = NULL WHERE property_id = ANY($1::bigint[])',
+    [propertyIds],
+  );
+  await client.query('DELETE FROM favorites_favorite WHERE property_id = ANY($1::bigint[])', [propertyIds]);
+  await client.query(
+    'DELETE FROM properties_propertyagentassignment WHERE property_id = ANY($1::bigint[])',
+    [propertyIds],
+  );
+  await client.query('DELETE FROM user_property_amenities WHERE property_id = ANY($1::bigint[])', [propertyIds]);
+  await client.query(
+    'DELETE FROM owner_announcements_inappnotification WHERE announcement_id = ANY($1::bigint[])',
+    [announcementIds],
+  );
+  await client.query(
+    'DELETE FROM owner_announcements_ownerannouncementevent WHERE announcement_id = ANY($1::bigint[])',
+    [announcementIds],
+  );
+  await client.query(
+    'DELETE FROM owner_announcements_ownerannouncementagreement WHERE announcement_id = ANY($1::bigint[])',
+    [announcementIds],
+  );
+  await client.query(
+    'DELETE FROM owner_announcements_ownerannouncement WHERE id = ANY($1::bigint[])',
+    [announcementIds],
+  );
+  await client.query('DELETE FROM user_propertyimage WHERE property_id = ANY($1::bigint[])', [propertyIds]);
+  await client.query('DELETE FROM user_property WHERE id = ANY($1::bigint[])', [propertyIds]);
+  return { imageFiles };
+}
+
+async function removeSubmissionImageFiles(deleted, logger) {
+  await Promise.all(deleted.imageFiles.map(async ({ imageId, path: imagePath }) => {
+    try {
+      await unlink(imagePath);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        logger.error('Failed to remove submission image after submission deletion.', {
+          imageId,
+          code: error.code || error.name,
+        });
+      }
+    }
+  }));
+}
+
+export async function deleteOwnerSubmissions(pool, userId, ids, mediaConfig, logger = console) {
+  const deleted = await withTransaction(pool, async (client) => {
     const user = await account(client, userId, true);
     if (!canSubmit(user)) throw forbidden('Only customers and property owners can delete submissions.');
     const rows = await client.query(
@@ -535,14 +621,11 @@ export async function deleteOwnerSubmissions(pool, userId, ids) {
     const disallowed = rows.rows.find((row) => !['pending_review', 'corrections_requested', 'rejected'].includes(row.status)
       || row.has_agreement);
     if (disallowed) throw conflict('Only pending, correction-requested, or rejected submissions can be deleted.');
-    for (const row of rows.rows) {
-      await addAdminAudit(client, user, 'owner_submission_deleted', row.id, {
-        property_title: row.title, submission_status: row.status,
-      });
-    }
-    await client.query('DELETE FROM user_property WHERE id = ANY($1::bigint[])', [rows.rows.map((row) => row.property_id)]);
-    return { deleted_count: rows.rowCount };
+    const cleanup = await removeSubmissionProperties(client, rows.rows, user, mediaConfig);
+    return { deleted_count: rows.rowCount, ...cleanup };
   });
+  await removeSubmissionImageFiles(deleted, logger);
+  return { deleted_count: deleted.deleted_count };
 }
 
 function submissionScope(user) {
@@ -555,7 +638,7 @@ function submissionScope(user) {
 
 function reviewSubmission(row, request) {
   return {
-    id: Number(row.announcement_id),
+    id: Number(row.id),
     property: {
       ...propertySubmission(row, request),
     },
@@ -791,8 +874,8 @@ export async function decideSubmission(pool, userId, submissionId, input, reques
   });
 }
 
-export async function deleteManagementSubmissions(pool, userId, ids) {
-  return withTransaction(pool, async (client) => {
+export async function deleteManagementSubmissions(pool, userId, ids, mediaConfig, logger = console) {
+  const deleted = await withTransaction(pool, async (client) => {
     const user = await account(client, userId, true);
     if (!canManageSubmissions(user, 'delete')) throw forbidden('Only administrators can delete owner submissions.');
     const rows = await client.query(
@@ -804,15 +887,11 @@ export async function deleteManagementSubmissions(pool, userId, ids) {
       [ids],
     );
     if (rows.rowCount !== ids.length) throw notFound('One or more submissions were not found.');
-    const propertyIds = rows.rows.map((row) => row.property_id);
-    for (const row of rows.rows) {
-      await addAdminAudit(client, user, 'owner_submission_deleted', row.id, {
-        property_title: row.title, submission_status: row.status,
-      });
-    }
-    await client.query('DELETE FROM user_property WHERE id = ANY($1::bigint[])', [propertyIds]);
-    return { deleted_count: rows.rowCount };
+    const cleanup = await removeSubmissionProperties(client, rows.rows, user, mediaConfig);
+    return { deleted_count: rows.rowCount, ...cleanup };
   });
+  await removeSubmissionImageFiles(deleted, logger);
+  return { deleted_count: deleted.deleted_count };
 }
 
 async function viewingRow(client, requestId, userId, scope, lock = false, managementScope = { clause: 'TRUE', values: [] }) {
@@ -1129,6 +1208,25 @@ export async function getManagementViewingRequest(pool, userId, requestId) {
   const row = await viewingRow(pool, requestId, undefined, 'management', false, scope);
   if (!row) throw notFound();
   return viewingJson(row, true);
+}
+
+export async function deleteManagementViewingRequest(pool, userId, requestId) {
+  return withTransaction(pool, async (client) => {
+    const user = await account(client, userId, true);
+    const scope = await manageViewingScope(client, user);
+    const row = await viewingRow(client, requestId, undefined, 'management', true, scope);
+    if (!row) throw notFound();
+    await client.query(
+      "DELETE FROM owner_announcements_inappnotification WHERE idempotency_key LIKE $1",
+      [`viewing:${requestId}:event:%`],
+    );
+    await client.query(
+      'DELETE FROM viewings_viewingrequestevent WHERE viewing_request_id = $1',
+      [requestId],
+    );
+    await client.query('DELETE FROM user_viewingrequest WHERE id = $1', [requestId]);
+    return null;
+  });
 }
 
 export async function patchManagementViewingRequest(pool, userId, requestId, input) {

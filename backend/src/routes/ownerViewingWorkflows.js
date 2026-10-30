@@ -21,9 +21,9 @@ import {
   viewingDecisionSchema,
 } from '../validators/ownerViewingWorkflows.js';
 
-export function ownerViewingWorkflowsRouter({ pool }) {
+export function ownerViewingWorkflowsRouter({ pool, mediaConfig, logger }) {
   const router = Router();
-  const controller = ownerViewingWorkflowsController({ pool });
+  const controller = ownerViewingWorkflowsController({ pool, mediaConfig, logger });
   const auth = authenticate({ pool });
 
   router.route('/submissions/')
@@ -64,7 +64,8 @@ export function ownerViewingWorkflowsRouter({ pool }) {
   router.get('/management/viewing-requests/', auth, validateRequest(viewingQuerySchema, 'query'), controller.managementViewingList);
   router.route('/management/viewing-requests/:requestId/')
     .get(auth, validateRequestId('requestId'), controller.managementViewingDetail)
-    .patch(auth, requireCsrf, validateRequestId('requestId'), validateRequest(viewingManagerPatchSchema), controller.managementViewingPatch);
+    .patch(auth, requireCsrf, validateRequestId('requestId'), validateRequest(viewingManagerPatchSchema), controller.managementViewingPatch)
+    .delete(auth, requireCsrf, validateRequestId('requestId'), controller.managementViewingDelete);
   router.post('/management/viewing-requests/:requestId/action/', auth, requireCsrf, validateRequestId('requestId'), validateRequest(viewingActionSchema), controller.managementViewingAction);
   return router;
 }

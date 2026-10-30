@@ -125,7 +125,7 @@ export function apiRouter({ pool, logger, mediaConfig, sendEmail }) {
     images.original,
   );
   router.use(siteWorkflowsRouter({ pool, mediaConfig, logger }));
-  router.use(ownerViewingWorkflowsRouter({ pool }));
+  router.use(ownerViewingWorkflowsRouter({ pool, mediaConfig, logger }));
   router.use(adminManagementWorkflowsRouter({ pool, mediaConfig, logger }));
   return router;
 }
